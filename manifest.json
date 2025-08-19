@@ -6,17 +6,5 @@
   "display": "standalone",
   "background_color": "#667eea",
   "theme_color": "#667eea",
-  "icons": [
-    {
-      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAyODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJncmFkIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIwJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0ijFNnQjcsNzAsODAlKSIvPjwvZGVmcz48Q2lyY2xlIGN4PSI2NCIgY3k9IjY0IiByPSI1MiIgZmlsbD0iIzY2N0VFQSIvPjwvZXhlPgAxIkxtXWIzNkE3WnkLd09UVE1cYztRbVRUTUQoQW1OSnlcYytRb1l1QXdPVFRNXGM7UW1UVE1EKkNvTkpcYztRbVRUTUMySkF6XGNlRFV5SncLd09UVE1cIgAxInVcYztRbVRUTUQqQ29OTmRUTUFOSnlcYz6EMlFtVFRNRComZGVNcjpcYtIsYGLVxjO1FtVFRNQzJLRFVsUncLd0yQimNQVFRNQ2FLa29sQW5SbUZSRGE5ZlBTRWpBc01vYWZQMVFtVFRNQtg0MFF5TG5cYyxDb055SEhBU1B0MFF0TG5cYztRbVRUTUM9Im5sLUFzbkNPY0kvXGNi439B2G1cYxtRbVRUTUN8Ig==",
-      "type": "image/svg+xml",
-      "sizes": "128x128"
-    },
-    {
-      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PExpbmVhckdyYWRpZW50IGlkPSJncmFkIiB4MT0iMCUiIHkxPSIWJSIgeDI9IjEwMCUiIHkyPSIWJSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcjQSmnwydDlaNTBcOEE3kGV2LXgLWjLBKfBL1NfRQiKWbNtxN85h7BIFxNy1QLQ5ZCaD0ic2YmVIFBBSJ7uw5CRXQ9LyBmIYqvDYWRnWSFp2qM",
-      "type": "image/svg+xml",
-      "sizes": "512x512"
-    }
-  ],
   "orientation": "portrait"
 }
