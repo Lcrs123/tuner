@@ -1,12 +1,12 @@
 {
-  "name": "Pitch Detector",
-  "short_name": "Pitch",
-  "description": "Real-time pitch detection and tuning tool",
+  "name": "Guitar Tuner",
+  "short_name": "Tuner",
+  "description": "Guitar tuning tool",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#667eea",
   "theme_color": "#667eea",
-  "orientation": "portrait",  
+  "orientation": "portrait",
   "icons": [
     {
       "src": "./icon.png",
