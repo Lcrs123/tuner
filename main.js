@@ -1,0 +1,351 @@
+let audioContext;
+let microphone;
+let analyser;
+let dataArray;
+let isListening = false;
+
+// Moving average for frequency smoothing
+const frequencyHistory = [];
+const SMOOTHING_WINDOW = 8; // Number of samples to average
+
+// Variables for holding last known frequency
+let lastKnownFrequency = null;
+let lastKnownNote = null;
+let lastUpdateTime = 0;
+const HOLD_DURATION = 2000; // Hold last frequency for 2 seconds
+
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const status = document.getElementById('status');
+const pitchDisplay = document.getElementById('pitchDisplay');
+const noteDisplay = document.getElementById('noteDisplay');
+const expectedFrequency = document.getElementById('expectedFrequency');
+const pitchDifference = document.getElementById('pitchDifference');
+const volumeLevel = document.getElementById('volumeLevel');
+
+// Note names for frequency to note conversion
+const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function addToFrequencyHistory(frequency) {
+    frequencyHistory.push(frequency);
+    if (frequencyHistory.length > SMOOTHING_WINDOW) {
+        frequencyHistory.shift();
+    }
+}
+
+function getSmoothedFrequency() {
+    if (frequencyHistory.length === 0) return 0;
+
+    // Calculate weighted average - recent samples have more weight
+    let sum = 0;
+    let weightSum = 0;
+
+    for (let i = 0; i < frequencyHistory.length; i++) {
+        const weight = (i + 1) / frequencyHistory.length; // Linear weight increase
+        sum += frequencyHistory[i] * weight;
+        weightSum += weight;
+    }
+
+    return sum / weightSum;
+}
+
+function frequencyToNote(frequency) {
+    const A4 = 440;
+    const C0 = A4 * Math.pow(2, -4.75);
+
+    if (frequency > 0) {
+        const h = Math.round(12 * Math.log2(frequency / C0));
+        const octave = Math.floor(h / 12);
+        const n = h % 12;
+        return {
+            note: noteNames[n] + octave,
+            expectedFreq: C0 * Math.pow(2, h / 12)
+        };
+    }
+    return { note: '', expectedFreq: 0 };
+}
+
+// Autocorrelation pitch detection algorithm
+function autoCorrelate(buffer, sampleRate) {
+    const SIZE = buffer.length;
+    const rms = Math.sqrt(buffer.reduce((sum, val) => sum + val * val, 0) / SIZE);
+
+    if (rms < 0.01) return -1; // Not enough signal
+
+    let r1 = 0;
+    let r2 = SIZE - 1;
+    const threshold = 0.2;
+
+    // Find the first point where amplitude crosses zero
+    for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[i]) < threshold) {
+            r1 = i;
+            break;
+        }
+    }
+
+    // Find the last point where amplitude crosses zero
+    for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buffer[SIZE - i]) < threshold) {
+            r2 = SIZE - i;
+            break;
+        }
+    }
+
+    const correlations = new Array(SIZE);
+    for (let i = 0; i < SIZE; i++) {
+        correlations[i] = 0;
+    }
+
+    // Autocorrelation
+    for (let i = r1; i < r2; i++) {
+        for (let j = 0; j < SIZE - i; j++) {
+            correlations[i] += buffer[j] * buffer[j + i];
+        }
+    }
+
+    let d = 0;
+    while (correlations[d] > correlations[d + 1]) d++;
+
+    let maxval = -1;
+    let maxpos = -1;
+
+    for (let i = d; i < SIZE / 2; i++) {
+        if (correlations[i] > maxval) {
+            maxval = correlations[i];
+            maxpos = i;
+        }
+    }
+
+    let T0 = maxpos;
+
+    // Parabolic interpolation
+    const y1 = correlations[T0 - 1];
+    const y2 = correlations[T0];
+    const y3 = correlations[T0 + 1];
+
+    const a = (y1 - 2 * y2 + y3) / 2;
+    const b = (y3 - y1) / 2;
+
+    if (a) T0 = T0 - b / (2 * a);
+
+    return sampleRate / T0;
+}
+
+function updatePitch() {
+    if (!isListening) return;
+
+    analyser.getFloatTimeDomainData(dataArray);
+
+    // Calculate volume level
+    const rms = Math.sqrt(dataArray.reduce((sum, val) => sum + val * val, 0) / dataArray.length);
+    const volumePercent = Math.min(rms * 1000, 100);
+    volumeLevel.style.width = volumePercent + '%';
+
+    // Detect pitch
+    const pitch = autoCorrelate(dataArray, audioContext.sampleRate);
+    const currentTime = Date.now();
+
+    if (pitch > 0 && pitch < 2000) {
+        // Add to history and get smoothed frequency
+        addToFrequencyHistory(pitch);
+        const smoothedPitch = getSmoothedFrequency();
+
+        // Update last known values
+        lastKnownFrequency = smoothedPitch;
+        lastKnownNote = frequencyToNote(smoothedPitch);
+        lastUpdateTime = currentTime;
+
+        const roundedPitch = Math.round(smoothedPitch * 10) / 10;
+        const expectedFreq = Math.round(lastKnownNote.expectedFreq * 10) / 10;
+        const cents = Math.round(1200 * Math.log2(smoothedPitch / lastKnownNote.expectedFreq));
+
+        pitchDisplay.textContent = roundedPitch + ' Hz';
+        noteDisplay.textContent = lastKnownNote.note;
+        expectedFrequency.textContent = `Expected: ${expectedFreq} Hz`;
+
+        // Show pitch difference in cents
+        if (Math.abs(cents) < 5) {
+            pitchDifference.textContent = `In Tune! (${cents > 0 ? '+' : ''}${cents} cents)`;
+            pitchDifference.className = 'pitch-difference in-tune';
+        } else if (cents > 0) {
+            pitchDifference.textContent = `Sharp (+${cents} cents)`;
+            pitchDifference.className = 'pitch-difference sharp';
+        } else {
+            pitchDifference.textContent = `Flat (${cents} cents)`;
+            pitchDifference.className = 'pitch-difference flat';
+        }
+
+        // Color based on pitch
+        const hue = (smoothedPitch - 80) % 360;
+        pitchDisplay.style.color = `hsl(${hue}, 70%, 80%)`;
+        noteDisplay.style.color = `hsl(${hue}, 70%, 80%)`;
+    } else {
+        // Clear history when no pitch is detected
+        frequencyHistory.length = 0;
+
+        // Check if we should still display the last known frequency
+        if (lastKnownFrequency && (currentTime - lastUpdateTime) < HOLD_DURATION) {
+            // Keep showing last known values with dimmed appearance
+            const roundedPitch = Math.round(lastKnownFrequency * 10) / 10;
+            const expectedFreq = Math.round(lastKnownNote.expectedFreq * 10) / 10;
+            const cents = Math.round(1200 * Math.log2(lastKnownFrequency / lastKnownNote.expectedFreq));
+
+            pitchDisplay.textContent = roundedPitch + ' Hz';
+            noteDisplay.textContent = lastKnownNote.note + ' (held)';
+            expectedFrequency.textContent = `Expected: ${expectedFreq} Hz`;
+
+            // Show pitch difference in cents
+            if (Math.abs(cents) < 5) {
+                pitchDifference.textContent = `In Tune! (${cents > 0 ? '+' : ''}${cents} cents)`;
+                pitchDifference.className = 'pitch-difference in-tune';
+            } else if (cents > 0) {
+                pitchDifference.textContent = `Sharp (+${cents} cents)`;
+                pitchDifference.className = 'pitch-difference sharp';
+            } else {
+                pitchDifference.textContent = `Flat (${cents} cents)`;
+                pitchDifference.className = 'pitch-difference flat';
+            }
+
+            // Dimmed colors to show it's held data
+            const hue = (lastKnownFrequency - 80) % 360;
+            pitchDisplay.style.color = `hsl(${hue}, 40%, 60%)`;
+            noteDisplay.style.color = `hsl(${hue}, 40%, 60%)`;
+            expectedFrequency.style.color = 'rgba(255, 230, 102, 0.6)';
+            pitchDifference.style.opacity = '0.7';
+        } else {
+            // Clear display after hold duration expires
+            lastKnownFrequency = null;
+            lastKnownNote = null;
+
+            pitchDisplay.textContent = '---';
+            noteDisplay.textContent = 'No pitch detected';
+            expectedFrequency.textContent = '';
+            pitchDifference.textContent = '';
+            pitchDisplay.style.color = 'white';
+            noteDisplay.style.color = 'rgba(255, 255, 255, 0.7)';
+            expectedFrequency.style.color = '#FFE066';
+            pitchDifference.style.opacity = '1';
+        }
+    }
+
+    requestAnimationFrame(updatePitch);
+}
+
+async function startListening() {
+    try {
+        status.textContent = 'Requesting microphone access...';
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: false,
+                autoGainControl: false,
+                noiseSuppression: false
+            }
+        });
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        microphone = audioContext.createMediaStreamSource(stream);
+
+        analyser.fftSize = 2048;
+        const bufferLength = analyser.fftSize;
+        dataArray = new Float32Array(bufferLength);
+
+        microphone.connect(analyser);
+
+        isListening = true;
+        status.textContent = 'Listening... Make some sound!';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        updatePitch();
+
+    } catch (err) {
+        status.textContent = 'Error: Could not access microphone. ' + err.message;
+        console.error('Error accessing microphone:', err);
+    }
+}
+
+function stopListening() {
+    isListening = false;
+
+    // Clear frequency history and last known values
+    frequencyHistory.length = 0;
+    lastKnownFrequency = null;
+    lastKnownNote = null;
+    lastUpdateTime = 0;
+
+    if (microphone) {
+        microphone.disconnect();
+        microphone = null;
+    }
+
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+
+    status.textContent = 'Stopped listening';
+    pitchDisplay.textContent = '---';
+    noteDisplay.textContent = 'Ready';
+    expectedFrequency.textContent = '';
+    pitchDifference.textContent = '';
+    pitchDisplay.style.color = 'white';
+    noteDisplay.style.color = 'white';
+    volumeLevel.style.width = '0%';
+
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+}
+
+startBtn.addEventListener('click', startListening);
+stopBtn.addEventListener('click', stopListening);
+
+// Handle page visibility change
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isListening) {
+        stopListening();
+    }
+});
+
+// PWA Installation handling
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallButton();
+});
+
+function showInstallButton() {
+    const installBtn = document.createElement('button');
+    installBtn.textContent = '📱 Install App';
+    installBtn.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+                border: none;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 25px;
+                font-size: 0.9rem;
+                cursor: pointer;
+                z-index: 1000;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            `;
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installBtn.remove();
+            }
+            deferredPrompt = null;
+        }
+    });
+
+    document.body.appendChild(installBtn);
+}
