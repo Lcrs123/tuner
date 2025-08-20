@@ -313,7 +313,6 @@ document.addEventListener('visibilitychange', () => {
 let deferredPrompt;
 
 window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
     deferredPrompt = e;
     showInstallButton();
 });
